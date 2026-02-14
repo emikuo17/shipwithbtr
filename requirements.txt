@@ -2,3 +2,4 @@ streamlit
 reportlab
 python-docx
 Pillow
+pandas
