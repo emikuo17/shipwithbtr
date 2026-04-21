@@ -23,7 +23,7 @@ COMPANY_ADDR = "14278 Valley Blvd.\nLa Puente, CA 91746"
 COMPANY_PHONE = "626-601-613"
 PAYABLE_NOTE = "Make all checks payable to MAKK CROSS BORDER SOLUTIONS LTD."
 THANK_YOU = "Thank you for your business!"
-LOGO_PATH = "assets/logo.png"  # optional
+LOGO_PATH = "assets/logo.png"
 
 # ----------------------------
 # Helpers
@@ -67,12 +67,17 @@ address = st.text_area("Address", value="", height=100)
 
 st.subheader("Line Items")
 
-# Buttons to add/remove rows (so you ALWAYS have a way to add another item)
 btn_col1, btn_col2, _ = st.columns([1, 1, 3])
 with btn_col1:
     if st.button("➕ Add line item"):
+        # Apply any pending edits before adding a row
+        base = st.session_state.items_df.copy()
+        editor_state = st.session_state.get("items_editor", {})
+        for idx, changes in editor_state.get("edited_rows", {}).items():
+            for col, val in changes.items():
+                base.at[idx, col] = val
         st.session_state.items_df = pd.concat(
-            [st.session_state.items_df, pd.DataFrame([{"Description": "", "Weight": 0.0, "Amount": 0.0}])],
+            [base, pd.DataFrame([{"Description": "", "Weight": 0.0, "Amount": 0.0}])],
             ignore_index=True
         )
 
@@ -81,11 +86,11 @@ with btn_col2:
         if len(st.session_state.items_df) > 1:
             st.session_state.items_df = st.session_state.items_df.iloc[:-1].reset_index(drop=True)
 
-# Editable table
+# Editable table — let data_editor manage its own state via key=
 edited_df = st.data_editor(
     st.session_state.items_df,
     use_container_width=True,
-    num_rows="fixed",  # we control rows via buttons (more reliable)
+    num_rows="fixed",
     column_config={
         "Description": st.column_config.TextColumn("Description", width="large"),
         "Weight": st.column_config.NumberColumn("Total Weight", min_value=0.0, step=0.1, format="%.2f"),
@@ -95,20 +100,14 @@ edited_df = st.data_editor(
     key="items_editor",
 )
 
-# Normalize + store back
+# Normalize for calculation only — do NOT write back to session state
 items_df = edited_df.copy()
 items_df["Description"] = items_df["Description"].map(safe_str)
 items_df["Weight"] = items_df["Weight"].map(safe_float)
 items_df["Amount"] = items_df["Amount"].map(safe_float)
-st.session_state.items_df = items_df
 
-# ✅ Subtotal auto from Amount column
 subtotal = float(items_df["Amount"].sum())
-
-# Sales tax manual
 sales_tax = st.number_input("Sales Tax (USD) - manual", min_value=0.0, step=1.0, value=0.0)
-
-# Total auto
 total = round(subtotal + float(sales_tax), 2)
 
 st.markdown(f"**Subtotal (auto): {money(subtotal)}**")
@@ -130,13 +129,11 @@ def build_pdf() -> io.BytesIO:
     margin_x = 0.75 * inch
     top_y = h - 0.75 * inch
 
-    # Logo (optional)
     try:
         c.drawImage(LOGO_PATH, margin_x, top_y - 1.05 * inch, width=1.0 * inch, height=1.0 * inch, mask="auto")
     except Exception:
         pass
 
-    # Company block (CENTER)
     c.setFont("Helvetica-Bold", 14)
     c.drawCentredString(w / 2, top_y, COMPANY_NAME)
 
@@ -147,7 +144,6 @@ def build_pdf() -> io.BytesIO:
         y_company -= 0.18 * inch
     c.drawCentredString(w / 2, y_company, COMPANY_PHONE)
 
-    # Invoice meta (RIGHT)
     right_x = w - margin_x
     meta_y = top_y - 0.10 * inch
 
@@ -164,7 +160,6 @@ def build_pdf() -> io.BytesIO:
     c.setFont("Helvetica", 10)
     c.drawRightString(right_x, meta_y - 1.07 * inch, inv_date.strftime("%Y/%m/%d"))
 
-    # BILL TO (LEFT)
     y = top_y - 1.55 * inch
     c.setFont("Helvetica-Bold", 11)
     c.drawString(margin_x, y, "BILL TO")
@@ -180,7 +175,6 @@ def build_pdf() -> io.BytesIO:
             c.drawString(margin_x, y, line)
             y -= 0.18 * inch
 
-    # Items table
     y_table_top = y - 0.25 * inch
     data = [["DESCRIPTION", "WEIGHT", "AMOUNT"]]
     for _, r in items_df.iterrows():
@@ -197,10 +191,8 @@ def build_pdf() -> io.BytesIO:
         ("FONTSIZE", (0, 0), (-1, 0), 10),
         ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
         ("LINEBELOW", (0, 0), (-1, 0), 1, colors.black),
-
         ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
         ("FONTSIZE", (0, 1), (-1, -1), 10),
-
         ("ALIGN", (1, 1), (2, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
@@ -212,7 +204,6 @@ def build_pdf() -> io.BytesIO:
     _, table_h = tbl.wrapOn(c, table_w, h)
     tbl.drawOn(c, table_x, table_y - table_h)
 
-    # Totals (RIGHT)
     y_totals = table_y - table_h - 0.35 * inch
     label_x = w - margin_x - 2.2 * inch
     value_x = w - margin_x
@@ -230,7 +221,6 @@ def build_pdf() -> io.BytesIO:
     c.drawRightString(label_x, y_totals, "Total")
     c.drawRightString(value_x, y_totals, money(total))
 
-    # Note box
     box_x = margin_x
     box_w = w - 2 * margin_x
     box_h = 0.95 * inch
