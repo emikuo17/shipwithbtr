@@ -61,9 +61,9 @@ st.title("MAKK Invoice Generator")
 col1, col2 = st.columns(2)
 with col1:
     inv_date = st.date_input("Date", value=date.today())
-    invoice_no = st.text_input("Invoice # (or Customer ID)", value="")
-with col2:
     receiver = st.text_input("To (Receiver name / Company)", value="")
+with col2:
+    invoice_no = st.text_input("Invoice # (or Customer ID)", value="")
     phone = st.text_input("Phone", value="")
 
 address = st.text_area("Address", value="", height=100)
