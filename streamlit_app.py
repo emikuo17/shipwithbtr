@@ -89,7 +89,7 @@ def safe_str(v) -> str:
 # ----------------------------
 if "items_df" not in st.session_state:
     st.session_state.items_df = pd.DataFrame(
-        [{"Qty": 1, "Description": "", "Weight (LB)": "", "Line Total (USD)": 0.0}]
+        [{"Qty": 1, "Description": "", "Weight": "", "Unit": "LB", "Line Total (USD)": 0.0}]
     )
 if "selected_customer" not in st.session_state:
     st.session_state.selected_customer = "-- Select a customer --"
@@ -99,7 +99,6 @@ if "selected_customer" not in st.session_state:
 # ----------------------------
 st.title("MAKK Invoice Generator")
 
-# Customer dropdown
 st.subheader("Customer")
 selected = st.selectbox(
     "Select existing customer (or fill manually below)",
@@ -134,7 +133,7 @@ with btn_col1:
             for col, val in changes.items():
                 base.at[idx, col] = val
         st.session_state.items_df = pd.concat(
-            [base, pd.DataFrame([{"Qty": 1, "Description": "", "Weight (LB)": "", "Line Total (USD)": 0.0}])],
+            [base, pd.DataFrame([{"Qty": 1, "Description": "", "Weight": "", "Unit": "LB", "Line Total (USD)": 0.0}])],
             ignore_index=True
         )
 
@@ -150,7 +149,8 @@ edited_df = st.data_editor(
     column_config={
         "Qty": st.column_config.NumberColumn("Qty", min_value=0, step=1, format="%d", width="small"),
         "Description": st.column_config.TextColumn("Description", width="large"),
-        "Weight (LB)": st.column_config.TextColumn("Weight (LB)", width="medium"),
+        "Weight": st.column_config.TextColumn("Weight", width="small"),
+        "Unit": st.column_config.SelectboxColumn("Unit", options=["LB", "KG", "NA"], width="small"),
         "Line Total (USD)": st.column_config.NumberColumn("Line Total (USD)", min_value=0.0, step=0.01, format="%.2f", width="medium"),
     },
     hide_index=True,
@@ -159,7 +159,8 @@ edited_df = st.data_editor(
 
 items_df = edited_df.copy()
 items_df["Description"] = items_df["Description"].map(safe_str)
-items_df["Weight (LB)"] = items_df["Weight (LB)"].map(safe_str)
+items_df["Weight"] = items_df["Weight"].map(safe_str)
+items_df["Unit"] = items_df["Unit"].map(safe_str)
 items_df["Line Total (USD)"] = items_df["Line Total (USD)"].map(safe_float)
 
 subtotal = float(items_df["Line Total (USD)"].sum())
@@ -264,30 +265,35 @@ def build_pdf() -> io.BytesIO:
     if phone.strip():
         c.drawRightString(margin_r, to_y, phone); to_y -= 0.17 * inch
     if address.strip():
-        for line in address.split("\n"):
-            if line.strip():
-                c.drawRightString(margin_r, to_y, line.strip())
+        for addr_line in address.split("\n"):
+            if addr_line.strip():
+                c.drawRightString(margin_r, to_y, addr_line.strip())
                 to_y -= 0.17 * inch
 
     # Line items table
     table_top = meta_y - 1.15 * inch
     table_w = margin_r - margin_x
     col_widths = [
-        table_w * 0.08,
-        table_w * 0.54,
-        table_w * 0.18,
+        table_w * 0.07,
+        table_w * 0.53,
+        table_w * 0.20,
         table_w * 0.20,
     ]
 
-    data = [["QTY", "DESCRIPTION", "WEIGHT(LB)", "LINE\nTOTAL(USD)"]]
+    data = [["QTY", "DESCRIPTION", "WEIGHT", "LINE\nTOTAL(USD)"]]
     for _, r in items_df.iterrows():
         qty_val = safe_float(r["Qty"])
         qty = str(int(qty_val)) if qty_val > 0 else ""
         desc = safe_str(r["Description"]).strip()
-        wt = safe_str(r["Weight (LB)"]).strip()
+        wt = safe_str(r["Weight"]).strip()
+        unit = safe_str(r["Unit"]).strip()
+        if unit == "NA":
+            wt_display = "NA"
+        else:
+            wt_display = f"{wt} {unit}".strip() if wt else ""
         amt = safe_float(r["Line Total (USD)"])
         amt_str = money(amt) if amt > 0 else ""
-        data.append([qty, desc, wt, amt_str])
+        data.append([qty, desc, wt_display, amt_str])
 
     data.append(["", "", "Subtotal", money(subtotal)])
     data.append(["", "", "Sales Tax", money(float(sales_tax))])
