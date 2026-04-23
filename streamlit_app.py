@@ -16,7 +16,7 @@ from reportlab.lib.utils import ImageReader
 # ----------------------------
 # Page config
 # ----------------------------
-st.set_page_config(page_title="MAKK Invoice Generator", layout="centered")
+st.set_page_config(page_title="MAKK Invoice Generator", layout="wide")
 
 # ----------------------------
 # Company config
@@ -30,7 +30,6 @@ LOGO_URL = "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/logo.jpg
 
 # ----------------------------
 # Customer directory
-# Add / edit your customers here
 # ----------------------------
 CUSTOMERS = {
     "-- Select a customer --": {
@@ -90,7 +89,7 @@ def safe_str(v) -> str:
 # ----------------------------
 if "items_df" not in st.session_state:
     st.session_state.items_df = pd.DataFrame(
-        [{"Qty": 1, "Description": "", "Weight": "", "Amount": 0.0}]
+        [{"Qty": 1, "Description": "", "Weight (LB)": "", "Line Total (USD)": 0.0}]
     )
 if "selected_customer" not in st.session_state:
     st.session_state.selected_customer = "-- Select a customer --"
@@ -113,7 +112,6 @@ cust = CUSTOMERS[selected]
 
 st.divider()
 
-# Invoice meta
 col1, col2 = st.columns(2)
 with col1:
     inv_date = st.date_input("Date", value=date.today())
@@ -136,7 +134,7 @@ with btn_col1:
             for col, val in changes.items():
                 base.at[idx, col] = val
         st.session_state.items_df = pd.concat(
-            [base, pd.DataFrame([{"Qty": 1, "Description": "", "Weight": "", "Amount": 0.0}])],
+            [base, pd.DataFrame([{"Qty": 1, "Description": "", "Weight (LB)": "", "Line Total (USD)": 0.0}])],
             ignore_index=True
         )
 
@@ -152,8 +150,8 @@ edited_df = st.data_editor(
     column_config={
         "Qty": st.column_config.NumberColumn("Qty", min_value=0, step=1, format="%d", width="small"),
         "Description": st.column_config.TextColumn("Description", width="large"),
-        "Weight": st.column_config.TextColumn("Weight (KG)", width="medium"),
-        "Amount": st.column_config.NumberColumn("Line Total (USD)", min_value=0.0, step=0.01, format="%.2f"),
+        "Weight (LB)": st.column_config.TextColumn("Weight (LB)", width="medium"),
+        "Line Total (USD)": st.column_config.NumberColumn("Line Total (USD)", min_value=0.0, step=0.01, format="%.2f", width="medium"),
     },
     hide_index=True,
     key="items_editor",
@@ -161,10 +159,10 @@ edited_df = st.data_editor(
 
 items_df = edited_df.copy()
 items_df["Description"] = items_df["Description"].map(safe_str)
-items_df["Weight"] = items_df["Weight"].map(safe_str)
-items_df["Amount"] = items_df["Amount"].map(safe_float)
+items_df["Weight (LB)"] = items_df["Weight (LB)"].map(safe_str)
+items_df["Line Total (USD)"] = items_df["Line Total (USD)"].map(safe_float)
 
-subtotal = float(items_df["Amount"].sum())
+subtotal = float(items_df["Line Total (USD)"].sum())
 sales_tax = st.number_input("Sales Tax (USD)", min_value=0.0, step=1.0, value=0.0)
 total = round(subtotal + float(sales_tax), 2)
 
@@ -187,7 +185,7 @@ def build_pdf() -> io.BytesIO:
     margin_r = w - 0.65 * inch
     top_y = h - 0.55 * inch
 
-    # ── Logo (top left, proper aspect ratio) ──
+    # Logo
     try:
         response = requests.get(LOGO_URL, timeout=5)
         response.raise_for_status()
@@ -203,13 +201,13 @@ def build_pdf() -> io.BytesIO:
     except Exception:
         pass
 
-    # ── INVOICE title (centered, large) ──
+    # INVOICE title
     c.setFont("Helvetica", 36)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawCentredString(w / 2, top_y - 0.5 * inch, "INVOICE")
     c.setFillColor(colors.black)
 
-    # ── Horizontal rule under INVOICE ──
+    # Horizontal rule
     rule_y = top_y - 0.75 * inch
     c.setStrokeColor(colors.HexColor("#4A6FA5"))
     c.setLineWidth(1.5)
@@ -217,10 +215,9 @@ def build_pdf() -> io.BytesIO:
     c.setLineWidth(1)
     c.setStrokeColor(colors.black)
 
-    # ── DATE / INVOICE # / CUSTOMER ID (left) | TO (right) ──
+    # Meta block
     meta_y = rule_y - 0.28 * inch
 
-    # Left block
     c.setFont("Helvetica-Bold", 9)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawString(margin_x, meta_y, "DATE:")
@@ -242,7 +239,7 @@ def build_pdf() -> io.BytesIO:
     c.setFont("Helvetica", 9)
     c.drawString(margin_x, meta_y - 0.93 * inch, safe_str(customer_id))
 
-    # Right block — TO (right-aligned)
+    # TO block (right-aligned)
     to_x = w / 2 + 0.5 * inch
     c.setFont("Helvetica-Bold", 9)
     c.setFillColor(colors.HexColor("#4A6FA5"))
@@ -251,7 +248,6 @@ def build_pdf() -> io.BytesIO:
     c.setFont("Helvetica", 9)
     to_y = meta_y - 0.17 * inch
     if receiver.strip():
-        # Word-wrap long receiver names to right edge
         words = receiver.strip().split()
         line = ""
         for word in words:
@@ -273,23 +269,23 @@ def build_pdf() -> io.BytesIO:
                 c.drawRightString(margin_r, to_y, line.strip())
                 to_y -= 0.17 * inch
 
-    # ── Line items table ──
+    # Line items table
     table_top = meta_y - 1.15 * inch
     table_w = margin_r - margin_x
     col_widths = [
         table_w * 0.08,
-        table_w * 0.56,
+        table_w * 0.54,
         table_w * 0.18,
-        table_w * 0.18,
+        table_w * 0.20,
     ]
 
-    data = [["QTY", "DESCRIPTION", "WEIGHT(KG)", "LINE\nTOTAL(USD)"]]
+    data = [["QTY", "DESCRIPTION", "WEIGHT(LB)", "LINE\nTOTAL(USD)"]]
     for _, r in items_df.iterrows():
         qty_val = safe_float(r["Qty"])
         qty = str(int(qty_val)) if qty_val > 0 else ""
         desc = safe_str(r["Description"]).strip()
-        wt = safe_str(r["Weight"]).strip()
-        amt = safe_float(r["Amount"])
+        wt = safe_str(r["Weight (LB)"]).strip()
+        amt = safe_float(r["Line Total (USD)"])
         amt_str = money(amt) if amt > 0 else ""
         data.append([qty, desc, wt, amt_str])
 
@@ -333,7 +329,7 @@ def build_pdf() -> io.BytesIO:
     _, table_h = tbl.wrapOn(c, table_w, h)
     tbl.drawOn(c, margin_x, table_top - table_h)
 
-    # ── Footer note ──
+    # Footer
     footer_y = table_top - table_h - 0.45 * inch
     c.setFont("Helvetica-Bold", 8)
     c.setFillColor(colors.HexColor("#4A6FA5"))
@@ -342,7 +338,7 @@ def build_pdf() -> io.BytesIO:
     c.setFillColor(colors.black)
     c.drawCentredString(w / 2, footer_y - 0.18 * inch, THANK_YOU)
 
-    # ── Bottom company block ──
+    # Bottom company block
     bottom_y = 0.55 * inch
     c.setStrokeColor(colors.HexColor("#4A6FA5"))
     c.setLineWidth(1)
