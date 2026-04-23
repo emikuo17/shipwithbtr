@@ -22,11 +22,51 @@ st.set_page_config(page_title="MAKK Invoice Generator", layout="centered")
 # Company config
 # ----------------------------
 COMPANY_NAME = "MAKK CROSS BORDER SOLUTIONS LTD."
-COMPANY_ADDR = "14278 Valley Blvd.\nLa Puente, CA 91746"
-COMPANY_PHONE = "626-601-613"
-PAYABLE_NOTE = "Make all checks payable to MAKK CROSS BORDER SOLUTIONS LTD."
+COMPANY_ADDR = "14278 VALLEY BLVD UNIT A CITY OF INDUSTRY CA 91746"
+COMPANY_PHONE = "626-601-6131"
+PAYABLE_NOTE = "MAKE ALL CHECKS PAYABLE TO MAKK CROSS BORDER SOLUTIONS LTD."
 THANK_YOU = "Thank you for your business!"
 LOGO_URL = "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/logo.jpg"
+
+# ----------------------------
+# Customer directory
+# Add / edit your customers here
+# ----------------------------
+CUSTOMERS = {
+    "-- Select a customer --": {
+        "customer_id": "", "receiver": "", "phone": "", "address": ""
+    },
+    "Falcon01 — Falcon Logistics Global Inc.": {
+        "customer_id": "Falcon01",
+        "receiver": "FALCON LOGISTICS GLOBAL INC.",
+        "phone": "",
+        "address": "667 BREA CANYON RD., STE 20B WALNUT, CA 91789",
+    },
+    "Baixin 01 — Shenzhen Baixin International Logistics": {
+        "customer_id": "Baixin 01",
+        "receiver": "Shenzhen Baixin International Logistics Co., Ltd. Huangshan Branch",
+        "phone": "",
+        "address": "",
+    },
+    "Paradigm01 — Richard Hercoson": {
+        "customer_id": "Paradigm01",
+        "receiver": "Richard Hercoson",
+        "phone": "",
+        "address": "",
+    },
+    "DalnoMo LLC": {
+        "customer_id": "DalnoMo LLC",
+        "receiver": "DalnoMo LLC",
+        "phone": "",
+        "address": "",
+    },
+    "Advantage Transport Solution Inc.": {
+        "customer_id": "Advantage transport solution inc",
+        "receiver": "Advantage transport solution inc",
+        "phone": "",
+        "address": "",
+    },
+}
 
 # ----------------------------
 # Helpers
@@ -46,27 +86,44 @@ def safe_str(v) -> str:
     return "" if v is None else str(v)
 
 # ----------------------------
-# Init session df
+# Init session state
 # ----------------------------
 if "items_df" not in st.session_state:
     st.session_state.items_df = pd.DataFrame(
-        [{"Description": "", "Weight": 0.0, "Amount": 0.0}]
+        [{"Qty": 1, "Description": "", "Weight": "", "Amount": 0.0}]
     )
+if "selected_customer" not in st.session_state:
+    st.session_state.selected_customer = "-- Select a customer --"
 
 # ----------------------------
 # UI
 # ----------------------------
 st.title("MAKK Invoice Generator")
 
+# Customer dropdown
+st.subheader("Customer")
+selected = st.selectbox(
+    "Select existing customer (or fill manually below)",
+    options=list(CUSTOMERS.keys()),
+    index=list(CUSTOMERS.keys()).index(st.session_state.selected_customer),
+    key="customer_dropdown",
+)
+st.session_state.selected_customer = selected
+cust = CUSTOMERS[selected]
+
+st.divider()
+
+# Invoice meta
 col1, col2 = st.columns(2)
 with col1:
     inv_date = st.date_input("Date", value=date.today())
-    receiver = st.text_input("To (Receiver name / Company)", value="")
+    receiver = st.text_input("To (Receiver name / Company)", value=cust["receiver"])
 with col2:
-    invoice_no = st.text_input("Invoice # (or Customer ID)", value="")
-    phone = st.text_input("Phone", value="")
+    invoice_no = st.text_input("Invoice #", value="")
+    customer_id = st.text_input("Customer ID", value=cust["customer_id"])
 
-address = st.text_area("Address", value="", height=100)
+phone = st.text_input("Phone", value=cust["phone"])
+address = st.text_area("Address", value=cust["address"], height=80)
 
 st.subheader("Line Items")
 
@@ -79,7 +136,7 @@ with btn_col1:
             for col, val in changes.items():
                 base.at[idx, col] = val
         st.session_state.items_df = pd.concat(
-            [base, pd.DataFrame([{"Description": "", "Weight": 0.0, "Amount": 0.0}])],
+            [base, pd.DataFrame([{"Qty": 1, "Description": "", "Weight": "", "Amount": 0.0}])],
             ignore_index=True
         )
 
@@ -93,9 +150,10 @@ edited_df = st.data_editor(
     use_container_width=True,
     num_rows="fixed",
     column_config={
+        "Qty": st.column_config.NumberColumn("Qty", min_value=0, step=1, format="%d", width="small"),
         "Description": st.column_config.TextColumn("Description", width="large"),
-        "Weight": st.column_config.NumberColumn("Total Weight", min_value=0.0, step=0.1, format="%.2f"),
-        "Amount": st.column_config.NumberColumn("Line Total (USD)", min_value=0.0, step=1.0, format="%.2f"),
+        "Weight": st.column_config.TextColumn("Weight (KG)", width="medium"),
+        "Amount": st.column_config.NumberColumn("Line Total (USD)", min_value=0.0, step=0.01, format="%.2f"),
     },
     hide_index=True,
     key="items_editor",
@@ -103,19 +161,18 @@ edited_df = st.data_editor(
 
 items_df = edited_df.copy()
 items_df["Description"] = items_df["Description"].map(safe_str)
-items_df["Weight"] = items_df["Weight"].map(safe_float)
+items_df["Weight"] = items_df["Weight"].map(safe_str)
 items_df["Amount"] = items_df["Amount"].map(safe_float)
 
 subtotal = float(items_df["Amount"].sum())
-sales_tax = st.number_input("Sales Tax (USD) - manual", min_value=0.0, step=1.0, value=0.0)
+sales_tax = st.number_input("Sales Tax (USD)", min_value=0.0, step=1.0, value=0.0)
 total = round(subtotal + float(sales_tax), 2)
 
-st.markdown(f"**Subtotal (auto): {money(subtotal)}**")
-st.markdown(f"**Total (auto): {money(total)}**")
+st.markdown(f"**Subtotal: {money(subtotal)}**")
+st.markdown(f"**Total: {money(total)}**")
 
 st.divider()
-
-note_default = f"Note: {PAYABLE_NOTE}\n{THANK_YOU}"
+note_default = f"{PAYABLE_NOTE}\n{THANK_YOU}"
 note = st.text_area("Note (shown on invoice)", value=note_default, height=80)
 
 # ----------------------------
@@ -126,10 +183,11 @@ def build_pdf() -> io.BytesIO:
     c = canvas.Canvas(buf, pagesize=LETTER)
     w, h = LETTER
 
-    margin_x = 0.75 * inch
-    top_y = h - 0.75 * inch
+    margin_x = 0.65 * inch
+    margin_r = w - 0.65 * inch
+    top_y = h - 0.55 * inch
 
-    # Logo from GitHub - preserves aspect ratio
+    # ── Logo (top left, proper aspect ratio) ──
     try:
         response = requests.get(LOGO_URL, timeout=5)
         response.raise_for_status()
@@ -137,7 +195,7 @@ def build_pdf() -> io.BytesIO:
         pil_img = PILImage.open(io.BytesIO(image_bytes))
         img_w, img_h = pil_img.size
         aspect = img_h / img_w
-        logo_display_w = 1.5 * inch
+        logo_display_w = 1.3 * inch
         logo_display_h = logo_display_w * aspect
         logo_buf = io.BytesIO(image_bytes)
         c.drawImage(ImageReader(logo_buf), margin_x, top_y - logo_display_h,
@@ -145,106 +203,156 @@ def build_pdf() -> io.BytesIO:
     except Exception:
         pass
 
-    c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(w / 2, top_y, COMPANY_NAME)
+    # ── INVOICE title (centered, large) ──
+    c.setFont("Helvetica", 36)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawCentredString(w / 2, top_y - 0.5 * inch, "INVOICE")
+    c.setFillColor(colors.black)
 
-    c.setFont("Helvetica", 10)
-    y_company = top_y - 0.22 * inch
-    for line in COMPANY_ADDR.split("\n"):
-        c.drawCentredString(w / 2, y_company, line)
-        y_company -= 0.18 * inch
-    c.drawCentredString(w / 2, y_company, COMPANY_PHONE)
+    # ── Horizontal rule under INVOICE ──
+    rule_y = top_y - 0.75 * inch
+    c.setStrokeColor(colors.HexColor("#4A6FA5"))
+    c.setLineWidth(1.5)
+    c.line(margin_x, rule_y, margin_r, rule_y)
+    c.setLineWidth(1)
+    c.setStrokeColor(colors.black)
 
-    right_x = w - margin_x
-    meta_y = top_y - 0.10 * inch
+    # ── DATE / INVOICE # / CUSTOMER ID (left) | TO (right) ──
+    meta_y = rule_y - 0.28 * inch
 
-    c.setFont("Helvetica-Bold", 18)
-    c.drawRightString(right_x, meta_y - 0.25 * inch, "INVOICE")
+    # Left block
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawString(margin_x, meta_y, "DATE:")
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 9)
+    c.drawString(margin_x, meta_y - 0.17 * inch, inv_date.strftime("%m/%d/%y"))
 
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(right_x, meta_y - 0.55 * inch, "Invoice #")
-    c.setFont("Helvetica", 10)
-    c.drawRightString(right_x, meta_y - 0.71 * inch, safe_str(invoice_no))
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawString(margin_x, meta_y - 0.38 * inch, "INVOICE #")
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 9)
+    c.drawString(margin_x, meta_y - 0.55 * inch, safe_str(invoice_no))
 
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(right_x, meta_y - 0.91 * inch, "Date")
-    c.setFont("Helvetica", 10)
-    c.drawRightString(right_x, meta_y - 1.07 * inch, inv_date.strftime("%Y/%m/%d"))
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawString(margin_x, meta_y - 0.76 * inch, "CUSTOMER ID:")
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 9)
+    c.drawString(margin_x, meta_y - 0.93 * inch, safe_str(customer_id))
 
-    y = top_y - 1.55 * inch
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(margin_x, y, "BILL TO")
-    y -= 0.22 * inch
-
-    c.setFont("Helvetica", 10)
+    # Right block — TO (right-aligned)
+    to_x = w / 2 + 0.5 * inch
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawString(to_x, meta_y, "TO:")
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 9)
+    to_y = meta_y - 0.17 * inch
     if receiver.strip():
-        c.drawString(margin_x, y, receiver); y -= 0.18 * inch
+        # Word-wrap long receiver names to right edge
+        words = receiver.strip().split()
+        line = ""
+        for word in words:
+            test = (line + " " + word).strip()
+            if c.stringWidth(test, "Helvetica", 9) > (margin_r - to_x):
+                c.drawRightString(margin_r, to_y, line)
+                to_y -= 0.17 * inch
+                line = word
+            else:
+                line = test
+        if line:
+            c.drawRightString(margin_r, to_y, line)
+            to_y -= 0.17 * inch
     if phone.strip():
-        c.drawString(margin_x, y, phone); y -= 0.18 * inch
+        c.drawRightString(margin_r, to_y, phone); to_y -= 0.17 * inch
     if address.strip():
         for line in address.split("\n"):
-            c.drawString(margin_x, y, line)
-            y -= 0.18 * inch
+            if line.strip():
+                c.drawRightString(margin_r, to_y, line.strip())
+                to_y -= 0.17 * inch
 
-    y_table_top = y - 0.25 * inch
-    data = [["DESCRIPTION", "WEIGHT", "AMOUNT"]]
+    # ── Line items table ──
+    table_top = meta_y - 1.15 * inch
+    table_w = margin_r - margin_x
+    col_widths = [
+        table_w * 0.08,
+        table_w * 0.56,
+        table_w * 0.18,
+        table_w * 0.18,
+    ]
+
+    data = [["QTY", "DESCRIPTION", "WEIGHT(KG)", "LINE\nTOTAL(USD)"]]
     for _, r in items_df.iterrows():
-        desc = (r["Description"].strip() or "-")
-        wt = float(r["Weight"])
-        amt = float(r["Amount"])
-        data.append([desc, f"{wt:,.2f}", money(amt)])
+        qty_val = safe_float(r["Qty"])
+        qty = str(int(qty_val)) if qty_val > 0 else ""
+        desc = safe_str(r["Description"]).strip()
+        wt = safe_str(r["Weight"]).strip()
+        amt = safe_float(r["Amount"])
+        amt_str = money(amt) if amt > 0 else ""
+        data.append([qty, desc, wt, amt_str])
 
-    table_w = w - 2 * margin_x
-    col_widths = [table_w * 0.64, table_w * 0.18, table_w * 0.18]
-    tbl = Table(data, colWidths=col_widths)
+    data.append(["", "", "Subtotal", money(subtotal)])
+    data.append(["", "", "Sales Tax", money(float(sales_tax))])
+    data.append(["", "", "Total", money(total)])
+
+    n_items = len(items_df)
+    n_rows = len(data)
+
+    tbl = Table(data, colWidths=col_widths, repeatRows=1)
     tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F2F2F2")),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 10),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, colors.black),
-        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 1), (-1, -1), 10),
-        ("ALIGN", (1, 1), (2, -1), "RIGHT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("FONTSIZE", (0, 0), (-1, 0), 8),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("GRID", (0, 0), (-1, n_items), 0.5, colors.HexColor("#CCCCCC")),
+        ("FONTNAME", (0, 1), (-1, n_items), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, n_items), 9),
+        ("ALIGN", (0, 1), (0, n_items), "CENTER"),
+        ("ALIGN", (2, 1), (2, n_items), "CENTER"),
+        ("ALIGN", (3, 1), (3, n_items), "RIGHT"),
+        ("VALIGN", (0, 1), (-1, n_items), "MIDDLE"),
+        ("TOPPADDING", (0, 1), (-1, n_items), 5),
+        ("BOTTOMPADDING", (0, 1), (-1, n_items), 5),
+        ("FONTNAME", (0, n_items + 1), (-1, n_items + 2), "Helvetica"),
+        ("FONTSIZE", (0, n_items + 1), (-1, n_rows - 1), 9),
+        ("ALIGN", (2, n_items + 1), (3, n_rows - 1), "RIGHT"),
+        ("TOPPADDING", (0, n_items + 1), (-1, n_rows - 1), 4),
+        ("BOTTOMPADDING", (0, n_items + 1), (-1, n_rows - 1), 4),
+        ("LINEABOVE", (2, n_items + 1), (3, n_items + 1), 0.5, colors.HexColor("#CCCCCC")),
+        ("FONTNAME", (2, n_rows - 1), (3, n_rows - 1), "Helvetica-Bold"),
+        ("FONTSIZE", (2, n_rows - 1), (3, n_rows - 1), 10),
+        ("LINEABOVE", (2, n_rows - 1), (3, n_rows - 1), 0.5, colors.HexColor("#CCCCCC")),
+        ("LINEBELOW", (2, n_rows - 1), (3, n_rows - 1), 0.5, colors.HexColor("#CCCCCC")),
     ]))
 
-    table_x = margin_x
-    table_y = y_table_top - 0.2 * inch
     _, table_h = tbl.wrapOn(c, table_w, h)
-    tbl.drawOn(c, table_x, table_y - table_h)
+    tbl.drawOn(c, margin_x, table_top - table_h)
 
-    y_totals = table_y - table_h - 0.35 * inch
-    label_x = w - margin_x - 2.2 * inch
-    value_x = w - margin_x
+    # ── Footer note ──
+    footer_y = table_top - table_h - 0.45 * inch
+    c.setFont("Helvetica-Bold", 8)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawCentredString(w / 2, footer_y, PAYABLE_NOTE)
+    c.setFont("Helvetica", 8)
+    c.setFillColor(colors.black)
+    c.drawCentredString(w / 2, footer_y - 0.18 * inch, THANK_YOU)
 
-    c.setFont("Helvetica", 10)
-    c.drawRightString(label_x, y_totals, "Subtotal")
-    c.drawRightString(value_x, y_totals, money(subtotal))
-    y_totals -= 0.22 * inch
-
-    c.drawRightString(label_x, y_totals, "Sales Tax")
-    c.drawRightString(value_x, y_totals, money(float(sales_tax)))
-    y_totals -= 0.22 * inch
-
-    c.setFont("Helvetica-Bold", 11)
-    c.drawRightString(label_x, y_totals, "Total")
-    c.drawRightString(value_x, y_totals, money(total))
-
-    box_x = margin_x
-    box_w = w - 2 * margin_x
-    box_h = 0.95 * inch
-    box_y = 0.85 * inch
-
-    c.setStrokeColor(colors.black)
-    c.rect(box_x, box_y, box_w, box_h, stroke=1, fill=0)
-
-    c.setFont("Helvetica", 10)
-    text = c.beginText(box_x + 0.2 * inch, box_y + box_h - 0.28 * inch)
-    for line in (note or "").split("\n"):
-        text.textLine(line.strip())
-    c.drawText(text)
+    # ── Bottom company block ──
+    bottom_y = 0.55 * inch
+    c.setStrokeColor(colors.HexColor("#4A6FA5"))
+    c.setLineWidth(1)
+    c.line(margin_x, bottom_y + 0.32 * inch, margin_r, bottom_y + 0.32 * inch)
+    c.setFont("Helvetica-Bold", 8)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawCentredString(w / 2, bottom_y + 0.15 * inch, COMPANY_NAME)
+    c.setFont("Helvetica", 8)
+    c.setFillColor(colors.black)
+    c.drawCentredString(w / 2, bottom_y, f"{COMPANY_ADDR}  |  {COMPANY_PHONE}")
 
     c.showPage()
     c.save()
@@ -252,7 +360,7 @@ def build_pdf() -> io.BytesIO:
     return buf
 
 st.download_button(
-    "Download PDF",
+    "⬇️ Download PDF",
     data=build_pdf(),
     file_name=f"MAKK_Invoice_{invoice_no or 'draft'}.pdf",
     mime="application/pdf",
