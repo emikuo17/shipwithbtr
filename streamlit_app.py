@@ -1,4 +1,5 @@
 import io
+import requests
 from datetime import date
 
 import streamlit as st
@@ -9,6 +10,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
+from reportlab.lib.utils import ImageReader
 
 # ----------------------------
 # Page config
@@ -23,7 +25,7 @@ COMPANY_ADDR = "14278 Valley Blvd.\nLa Puente, CA 91746"
 COMPANY_PHONE = "626-601-613"
 PAYABLE_NOTE = "Make all checks payable to MAKK CROSS BORDER SOLUTIONS LTD."
 THANK_YOU = "Thank you for your business!"
-LOGO_PATH = "assets/logo.png"
+LOGO_URL = "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/logo.jpg"
 
 # ----------------------------
 # Helpers
@@ -70,7 +72,6 @@ st.subheader("Line Items")
 btn_col1, btn_col2, _ = st.columns([1, 1, 3])
 with btn_col1:
     if st.button("➕ Add line item"):
-        # Apply any pending edits before adding a row
         base = st.session_state.items_df.copy()
         editor_state = st.session_state.get("items_editor", {})
         for idx, changes in editor_state.get("edited_rows", {}).items():
@@ -86,7 +87,6 @@ with btn_col2:
         if len(st.session_state.items_df) > 1:
             st.session_state.items_df = st.session_state.items_df.iloc[:-1].reset_index(drop=True)
 
-# Editable table — let data_editor manage its own state via key=
 edited_df = st.data_editor(
     st.session_state.items_df,
     use_container_width=True,
@@ -100,7 +100,6 @@ edited_df = st.data_editor(
     key="items_editor",
 )
 
-# Normalize for calculation only — do NOT write back to session state
 items_df = edited_df.copy()
 items_df["Description"] = items_df["Description"].map(safe_str)
 items_df["Weight"] = items_df["Weight"].map(safe_float)
@@ -129,8 +128,13 @@ def build_pdf() -> io.BytesIO:
     margin_x = 0.75 * inch
     top_y = h - 0.75 * inch
 
+    # Logo from GitHub
     try:
-        c.drawImage(LOGO_PATH, margin_x, top_y - 1.05 * inch, width=1.0 * inch, height=1.0 * inch, mask="auto")
+        response = requests.get(LOGO_URL, timeout=5)
+        response.raise_for_status()
+        logo_buf = io.BytesIO(response.content)
+        c.drawImage(ImageReader(logo_buf), margin_x, top_y - 1.05 * inch,
+                    width=1.0 * inch, height=1.0 * inch, mask="auto")
     except Exception:
         pass
 
