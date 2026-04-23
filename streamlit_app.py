@@ -4,6 +4,7 @@ from datetime import date
 
 import streamlit as st
 import pandas as pd
+from PIL import Image as PILImage
 
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
@@ -128,13 +129,19 @@ def build_pdf() -> io.BytesIO:
     margin_x = 0.75 * inch
     top_y = h - 0.75 * inch
 
-    # Logo from GitHub
+    # Logo from GitHub - preserves aspect ratio
     try:
         response = requests.get(LOGO_URL, timeout=5)
         response.raise_for_status()
-        logo_buf = io.BytesIO(response.content)
-        c.drawImage(ImageReader(logo_buf), margin_x, top_y - 1.05 * inch,
-                    width=1.0 * inch, height=1.0 * inch, mask="auto")
+        image_bytes = response.content
+        pil_img = PILImage.open(io.BytesIO(image_bytes))
+        img_w, img_h = pil_img.size
+        aspect = img_h / img_w
+        logo_display_w = 1.5 * inch
+        logo_display_h = logo_display_w * aspect
+        logo_buf = io.BytesIO(image_bytes)
+        c.drawImage(ImageReader(logo_buf), margin_x, top_y - logo_display_h,
+                    width=logo_display_w, height=logo_display_h, mask="auto")
     except Exception:
         pass
 
