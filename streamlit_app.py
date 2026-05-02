@@ -191,31 +191,45 @@ note = st.text_area("Note (shown on invoice)", value=note_default, height=80)
 # ----------------------------
 # PDF generation
 # ----------------------------
-def draw_invoice_page(c, w, h, image_bytes):
+def build_pdf() -> io.BytesIO:
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=LETTER)
+    w, h = LETTER
+
     margin_x = 0.65 * inch
     margin_r = w - 0.65 * inch
     top_y = h - 0.55 * inch
 
-    # Logo
+    # Fetch logo once
+    image_bytes = None
     try:
-        pil_img = PILImage.open(io.BytesIO(image_bytes))
-        img_w, img_h = pil_img.size
-        aspect = img_h / img_w
-        logo_display_w = 1.3 * inch
-        logo_display_h = logo_display_w * aspect
-        logo_buf = io.BytesIO(image_bytes)
-        c.drawImage(ImageReader(logo_buf), margin_x, top_y - logo_display_h,
-                    width=logo_display_w, height=logo_display_h, mask="auto")
+        response = requests.get(LOGO_URL, timeout=5)
+        response.raise_for_status()
+        image_bytes = response.content
     except Exception:
         pass
 
-    # INVOICE title
+    # ── Logo ──
+    if image_bytes:
+        try:
+            pil_img = PILImage.open(io.BytesIO(image_bytes))
+            img_w, img_h = pil_img.size
+            aspect = img_h / img_w
+            logo_display_w = 1.3 * inch
+            logo_display_h = logo_display_w * aspect
+            logo_buf = io.BytesIO(image_bytes)
+            c.drawImage(ImageReader(logo_buf), margin_x, top_y - logo_display_h,
+                        width=logo_display_w, height=logo_display_h, mask="auto")
+        except Exception:
+            pass
+
+    # ── INVOICE title ──
     c.setFont("Helvetica", 36)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawCentredString(w / 2, top_y - 0.5 * inch, "INVOICE")
     c.setFillColor(colors.black)
 
-    # Horizontal rule
+    # ── Horizontal rule ──
     rule_y = top_y - 0.75 * inch
     c.setStrokeColor(colors.HexColor("#4A6FA5"))
     c.setLineWidth(1.5)
@@ -223,7 +237,7 @@ def draw_invoice_page(c, w, h, image_bytes):
     c.setLineWidth(1)
     c.setStrokeColor(colors.black)
 
-    # Meta block
+    # ── Meta block ──
     meta_y = rule_y - 0.28 * inch
 
     c.setFont("Helvetica-Bold", 9)
@@ -247,7 +261,7 @@ def draw_invoice_page(c, w, h, image_bytes):
     c.setFont("Helvetica", 9)
     c.drawString(margin_x, meta_y - 0.93 * inch, safe_str(customer_id))
 
-    # TO block
+    # ── TO block ──
     to_x = w / 2 + 0.5 * inch
     c.setFont("Helvetica-Bold", 9)
     c.setFillColor(colors.HexColor("#4A6FA5"))
@@ -277,7 +291,7 @@ def draw_invoice_page(c, w, h, image_bytes):
                 c.drawRightString(margin_r, to_y, addr_line.strip())
                 to_y -= 0.17 * inch
 
-    # Line items table
+    # ── Line items table ──
     table_top = meta_y - 1.15 * inch
     table_w = margin_r - margin_x
     col_widths = [table_w * 0.07, table_w * 0.53, table_w * 0.20, table_w * 0.20]
@@ -334,8 +348,8 @@ def draw_invoice_page(c, w, h, image_bytes):
     _, table_h = tbl.wrapOn(c, table_w, h)
     tbl.drawOn(c, margin_x, table_top - table_h)
 
-    # Footer
-    footer_y = table_top - table_h - 0.45 * inch
+    # ── Footer note (checks payable + thank you) ──
+    footer_y = table_top - table_h - 0.4 * inch
     c.setFont("Helvetica-Bold", 8)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawCentredString(w / 2, footer_y, PAYABLE_NOTE)
@@ -343,64 +357,34 @@ def draw_invoice_page(c, w, h, image_bytes):
     c.setFillColor(colors.black)
     c.drawCentredString(w / 2, footer_y - 0.18 * inch, THANK_YOU)
 
-    # Bottom company block
-    bottom_y = 0.55 * inch
-    c.setStrokeColor(colors.HexColor("#4A6FA5"))
-    c.setLineWidth(1)
-    c.line(margin_x, bottom_y + 0.32 * inch, margin_r, bottom_y + 0.32 * inch)
-    c.setFont("Helvetica-Bold", 8)
+    # ── Payment Information block (in the blank space) ──
+    pay_y = footer_y - 0.55 * inch
+
+    # Section title
+    c.setFont("Helvetica-Bold", 11)
     c.setFillColor(colors.HexColor("#4A6FA5"))
-    c.drawCentredString(w / 2, bottom_y + 0.15 * inch, COMPANY_NAME)
-    c.setFont("Helvetica", 8)
-    c.setFillColor(colors.black)
-    c.drawCentredString(w / 2, bottom_y, f"{COMPANY_ADDR}  |  {COMPANY_PHONE}")
+    c.drawString(margin_x, pay_y, "PAYMENT INFORMATION")
+    pay_y -= 0.08 * inch
 
-
-def draw_payment_page(c, w, h, image_bytes):
-    margin_x = 0.65 * inch
-    margin_r = w - 0.65 * inch
-    top_y = h - 0.55 * inch
-
-    # Logo
-    try:
-        pil_img = PILImage.open(io.BytesIO(image_bytes))
-        img_w, img_h = pil_img.size
-        aspect = img_h / img_w
-        logo_display_w = 1.3 * inch
-        logo_display_h = logo_display_w * aspect
-        logo_buf = io.BytesIO(image_bytes)
-        c.drawImage(ImageReader(logo_buf), margin_x, top_y - logo_display_h,
-                    width=logo_display_w, height=logo_display_h, mask="auto")
-    except Exception:
-        pass
-
-    # PAYMENT INFORMATION title
-    c.setFont("Helvetica", 36)
-    c.setFillColor(colors.HexColor("#4A6FA5"))
-    c.drawCentredString(w / 2, top_y - 0.5 * inch, "PAYMENT INFORMATION")
-    c.setFillColor(colors.black)
-
-    # Horizontal rule
-    rule_y = top_y - 0.75 * inch
+    # Teal underline
     c.setStrokeColor(colors.HexColor("#2E8B8B"))
-    c.setLineWidth(1.5)
-    c.line(margin_x, rule_y, margin_r, rule_y)
     c.setLineWidth(1)
+    c.line(margin_x, pay_y, margin_r, pay_y)
+    pay_y -= 0.25 * inch
     c.setStrokeColor(colors.black)
 
-    # Payment info rows
-    py = rule_y - 0.45 * inch
+    # Payment rows
     for label, value in PAYMENT_INFO:
-        c.setFont("Helvetica-Bold", 10)
+        c.setFont("Helvetica-Bold", 8.5)
         c.setFillColor(colors.HexColor("#2C3E6B"))
-        c.drawString(margin_x, py, f"{label}:  ")
-        label_w = c.stringWidth(f"{label}:  ", "Helvetica-Bold", 10)
-        c.setFont("Helvetica", 10)
-        c.setFillColor(colors.HexColor("#2C3E6B"))
-        c.drawString(margin_x + label_w, py, value)
-        py -= 0.38 * inch
+        label_str = f"{label}: "
+        label_w = c.stringWidth(label_str, "Helvetica-Bold", 8.5)
+        c.drawString(margin_x, pay_y, label_str)
+        c.setFont("Helvetica", 8.5)
+        c.drawString(margin_x + label_w, pay_y, value)
+        pay_y -= 0.23 * inch
 
-    # Bottom company block
+    # ── Bottom company block ──
     bottom_y = 0.55 * inch
     c.setStrokeColor(colors.HexColor("#4A6FA5"))
     c.setLineWidth(1)
@@ -412,33 +396,10 @@ def draw_payment_page(c, w, h, image_bytes):
     c.setFillColor(colors.black)
     c.drawCentredString(w / 2, bottom_y, f"{COMPANY_ADDR}  |  {COMPANY_PHONE}")
 
-
-def build_pdf() -> io.BytesIO:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=LETTER)
-    w, h = LETTER
-
-    # Fetch logo once
-    image_bytes = None
-    try:
-        response = requests.get(LOGO_URL, timeout=5)
-        response.raise_for_status()
-        image_bytes = response.content
-    except Exception:
-        pass
-
-    # Page 1 — Invoice
-    draw_invoice_page(c, w, h, image_bytes)
     c.showPage()
-
-    # Page 2 — Payment Information
-    draw_payment_page(c, w, h, image_bytes)
-    c.showPage()
-
     c.save()
     buf.seek(0)
     return buf
-
 
 st.download_button(
     "⬇️ Download PDF",
