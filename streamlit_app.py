@@ -29,6 +29,20 @@ THANK_YOU = "Thank you for your business!"
 LOGO_URL = "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/logo.jpg"
 
 # ----------------------------
+# Payment info
+# ----------------------------
+PAYMENT_INFO = [
+    ("BUSINESS NAME", "MAKK CROSS BORDER SOLUTIONS LTD."),
+    ("ACCOUNT NUMBER", "157536489329"),
+    ("ACH ROUTING NUMBER", "122235821"),
+    ("BANK NAME", "US BANK"),
+    ("SWIFT CODE", "USBKUS44IMT"),
+    ("BANK ADDRESS", "17501 Colima Rd Suite A, City of Industry, CA 91748"),
+    ("BANK PHONE NUMBER", "(626) 923-5259"),
+    ("ZELLE", "626-601-6131 (MAKK CROSS BORDER SOLUTIONS LTD)"),
+]
+
+# ----------------------------
 # Customer directory
 # ----------------------------
 CUSTOMERS = {
@@ -177,20 +191,13 @@ note = st.text_area("Note (shown on invoice)", value=note_default, height=80)
 # ----------------------------
 # PDF generation
 # ----------------------------
-def build_pdf() -> io.BytesIO:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=LETTER)
-    w, h = LETTER
-
+def draw_invoice_page(c, w, h, image_bytes):
     margin_x = 0.65 * inch
     margin_r = w - 0.65 * inch
     top_y = h - 0.55 * inch
 
     # Logo
     try:
-        response = requests.get(LOGO_URL, timeout=5)
-        response.raise_for_status()
-        image_bytes = response.content
         pil_img = PILImage.open(io.BytesIO(image_bytes))
         img_w, img_h = pil_img.size
         aspect = img_h / img_w
@@ -240,7 +247,7 @@ def build_pdf() -> io.BytesIO:
     c.setFont("Helvetica", 9)
     c.drawString(margin_x, meta_y - 0.93 * inch, safe_str(customer_id))
 
-    # TO block (right-aligned)
+    # TO block
     to_x = w / 2 + 0.5 * inch
     c.setFont("Helvetica-Bold", 9)
     c.setFillColor(colors.HexColor("#4A6FA5"))
@@ -273,12 +280,7 @@ def build_pdf() -> io.BytesIO:
     # Line items table
     table_top = meta_y - 1.15 * inch
     table_w = margin_r - margin_x
-    col_widths = [
-        table_w * 0.07,
-        table_w * 0.53,
-        table_w * 0.20,
-        table_w * 0.20,
-    ]
+    col_widths = [table_w * 0.07, table_w * 0.53, table_w * 0.20, table_w * 0.20]
 
     data = [["QTY", "DESCRIPTION", "WEIGHT", "LINE\nTOTAL(USD)"]]
     for _, r in items_df.iterrows():
@@ -287,10 +289,7 @@ def build_pdf() -> io.BytesIO:
         desc = safe_str(r["Description"]).strip()
         wt = safe_str(r["Weight"]).strip()
         unit = safe_str(r["Unit"]).strip()
-        if unit == "NA":
-            wt_display = "NA"
-        else:
-            wt_display = f"{wt} {unit}".strip() if wt else ""
+        wt_display = "NA" if unit == "NA" else (f"{wt} {unit}".strip() if wt else "")
         amt = safe_float(r["Line Total (USD)"])
         amt_str = money(amt) if amt > 0 else ""
         data.append([qty, desc, wt_display, amt_str])
@@ -356,10 +355,90 @@ def build_pdf() -> io.BytesIO:
     c.setFillColor(colors.black)
     c.drawCentredString(w / 2, bottom_y, f"{COMPANY_ADDR}  |  {COMPANY_PHONE}")
 
+
+def draw_payment_page(c, w, h, image_bytes):
+    margin_x = 0.65 * inch
+    margin_r = w - 0.65 * inch
+    top_y = h - 0.55 * inch
+
+    # Logo
+    try:
+        pil_img = PILImage.open(io.BytesIO(image_bytes))
+        img_w, img_h = pil_img.size
+        aspect = img_h / img_w
+        logo_display_w = 1.3 * inch
+        logo_display_h = logo_display_w * aspect
+        logo_buf = io.BytesIO(image_bytes)
+        c.drawImage(ImageReader(logo_buf), margin_x, top_y - logo_display_h,
+                    width=logo_display_w, height=logo_display_h, mask="auto")
+    except Exception:
+        pass
+
+    # PAYMENT INFORMATION title
+    c.setFont("Helvetica", 36)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawCentredString(w / 2, top_y - 0.5 * inch, "PAYMENT INFORMATION")
+    c.setFillColor(colors.black)
+
+    # Horizontal rule
+    rule_y = top_y - 0.75 * inch
+    c.setStrokeColor(colors.HexColor("#2E8B8B"))
+    c.setLineWidth(1.5)
+    c.line(margin_x, rule_y, margin_r, rule_y)
+    c.setLineWidth(1)
+    c.setStrokeColor(colors.black)
+
+    # Payment info rows
+    py = rule_y - 0.45 * inch
+    for label, value in PAYMENT_INFO:
+        c.setFont("Helvetica-Bold", 10)
+        c.setFillColor(colors.HexColor("#2C3E6B"))
+        c.drawString(margin_x, py, f"{label}:  ")
+        label_w = c.stringWidth(f"{label}:  ", "Helvetica-Bold", 10)
+        c.setFont("Helvetica", 10)
+        c.setFillColor(colors.HexColor("#2C3E6B"))
+        c.drawString(margin_x + label_w, py, value)
+        py -= 0.38 * inch
+
+    # Bottom company block
+    bottom_y = 0.55 * inch
+    c.setStrokeColor(colors.HexColor("#4A6FA5"))
+    c.setLineWidth(1)
+    c.line(margin_x, bottom_y + 0.32 * inch, margin_r, bottom_y + 0.32 * inch)
+    c.setFont("Helvetica-Bold", 8)
+    c.setFillColor(colors.HexColor("#4A6FA5"))
+    c.drawCentredString(w / 2, bottom_y + 0.15 * inch, COMPANY_NAME)
+    c.setFont("Helvetica", 8)
+    c.setFillColor(colors.black)
+    c.drawCentredString(w / 2, bottom_y, f"{COMPANY_ADDR}  |  {COMPANY_PHONE}")
+
+
+def build_pdf() -> io.BytesIO:
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=LETTER)
+    w, h = LETTER
+
+    # Fetch logo once
+    image_bytes = None
+    try:
+        response = requests.get(LOGO_URL, timeout=5)
+        response.raise_for_status()
+        image_bytes = response.content
+    except Exception:
+        pass
+
+    # Page 1 — Invoice
+    draw_invoice_page(c, w, h, image_bytes)
     c.showPage()
+
+    # Page 2 — Payment Information
+    draw_payment_page(c, w, h, image_bytes)
+    c.showPage()
+
     c.save()
     buf.seek(0)
     return buf
+
 
 st.download_button(
     "⬇️ Download PDF",
