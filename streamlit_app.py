@@ -12,6 +12,8 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 # ----------------------------
 # Page config
@@ -27,6 +29,31 @@ COMPANY_PHONE = "626-601-6131"
 PAYABLE_NOTE = "MAKE ALL CHECKS PAYABLE TO MAKK CROSS BORDER SOLUTIONS LTD."
 THANK_YOU = "Thank you for your business!"
 LOGO_URL = "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/logo.jpg"
+
+# ----------------------------
+# CJK font (fetched at runtime, no manual download needed)
+# ----------------------------
+FONT_URL = "https://github.com/justfont/open-huninn-font/releases/download/v2.1/jf-openhuninn-2.1.ttf"
+FONT_NAME = "CJK"
+FONT_NAME_BOLD = "CJK-Bold"  # mapped to same file below (font has no separate bold weight)
+
+@st.cache_resource(show_spinner=False)
+def load_cjk_font():
+    """Fetch the CJK TTF once per app session and register it with ReportLab."""
+    try:
+        resp = requests.get(FONT_URL, timeout=15)
+        resp.raise_for_status()
+        font_bytes = resp.content
+        pdfmetrics.registerFont(TTFont(FONT_NAME, io.BytesIO(font_bytes)))
+        pdfmetrics.registerFont(TTFont(FONT_NAME_BOLD, io.BytesIO(font_bytes)))
+        return True
+    except Exception as e:
+        st.warning(f"Could not load Chinese font, falling back to Helvetica (Chinese text will not render correctly): {e}")
+        return False
+
+_font_ok = load_cjk_font()
+BASE_FONT = FONT_NAME if _font_ok else "Helvetica"
+BASE_FONT_BOLD = FONT_NAME_BOLD if _font_ok else "Helvetica-Bold"
 
 # ----------------------------
 # Payment info
@@ -224,7 +251,7 @@ def build_pdf() -> io.BytesIO:
             pass
 
     # ── INVOICE title ──
-    c.setFont("Helvetica", 36)
+    c.setFont(BASE_FONT, 36)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawCentredString(w / 2, top_y - 0.5 * inch, "INVOICE")
     c.setFillColor(colors.black)
@@ -240,41 +267,41 @@ def build_pdf() -> io.BytesIO:
     # ── Meta block ──
     meta_y = rule_y - 0.28 * inch
 
-    c.setFont("Helvetica-Bold", 9)
+    c.setFont(BASE_FONT_BOLD, 9)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawString(margin_x, meta_y, "DATE:")
     c.setFillColor(colors.black)
-    c.setFont("Helvetica", 9)
+    c.setFont(BASE_FONT, 9)
     c.drawString(margin_x, meta_y - 0.17 * inch, inv_date.strftime("%m/%d/%y"))
 
-    c.setFont("Helvetica-Bold", 9)
+    c.setFont(BASE_FONT_BOLD, 9)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawString(margin_x, meta_y - 0.38 * inch, "INVOICE #")
     c.setFillColor(colors.black)
-    c.setFont("Helvetica", 9)
+    c.setFont(BASE_FONT, 9)
     c.drawString(margin_x, meta_y - 0.55 * inch, safe_str(invoice_no))
 
-    c.setFont("Helvetica-Bold", 9)
+    c.setFont(BASE_FONT_BOLD, 9)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawString(margin_x, meta_y - 0.76 * inch, "CUSTOMER ID:")
     c.setFillColor(colors.black)
-    c.setFont("Helvetica", 9)
+    c.setFont(BASE_FONT, 9)
     c.drawString(margin_x, meta_y - 0.93 * inch, safe_str(customer_id))
 
     # ── TO block ──
     to_x = w / 2 + 0.5 * inch
-    c.setFont("Helvetica-Bold", 9)
+    c.setFont(BASE_FONT_BOLD, 9)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawString(to_x, meta_y, "TO:")
     c.setFillColor(colors.black)
-    c.setFont("Helvetica", 9)
+    c.setFont(BASE_FONT, 9)
     to_y = meta_y - 0.17 * inch
     if receiver.strip():
         words = receiver.strip().split()
         line = ""
         for word in words:
             test = (line + " " + word).strip()
-            if c.stringWidth(test, "Helvetica", 9) > (margin_r - to_x):
+            if c.stringWidth(test, BASE_FONT, 9) > (margin_r - to_x):
                 c.drawRightString(margin_r, to_y, line)
                 to_y -= 0.17 * inch
                 line = word
@@ -318,14 +345,14 @@ def build_pdf() -> io.BytesIO:
     tbl = Table(data, colWidths=col_widths, repeatRows=1)
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F2F2F2")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 0), (-1, 0), BASE_FONT_BOLD),
         ("FONTSIZE", (0, 0), (-1, 0), 8),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
         ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, 0), 6),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
         ("GRID", (0, 0), (-1, n_items), 0.5, colors.HexColor("#CCCCCC")),
-        ("FONTNAME", (0, 1), (-1, n_items), "Helvetica"),
+        ("FONTNAME", (0, 1), (-1, n_items), BASE_FONT),
         ("FONTSIZE", (0, 1), (-1, n_items), 9),
         ("ALIGN", (0, 1), (0, n_items), "CENTER"),
         ("ALIGN", (2, 1), (2, n_items), "CENTER"),
@@ -333,13 +360,13 @@ def build_pdf() -> io.BytesIO:
         ("VALIGN", (0, 1), (-1, n_items), "MIDDLE"),
         ("TOPPADDING", (0, 1), (-1, n_items), 5),
         ("BOTTOMPADDING", (0, 1), (-1, n_items), 5),
-        ("FONTNAME", (0, n_items + 1), (-1, n_items + 2), "Helvetica"),
+        ("FONTNAME", (0, n_items + 1), (-1, n_items + 2), BASE_FONT),
         ("FONTSIZE", (0, n_items + 1), (-1, n_rows - 1), 9),
         ("ALIGN", (2, n_items + 1), (3, n_rows - 1), "RIGHT"),
         ("TOPPADDING", (0, n_items + 1), (-1, n_rows - 1), 4),
         ("BOTTOMPADDING", (0, n_items + 1), (-1, n_rows - 1), 4),
         ("LINEABOVE", (2, n_items + 1), (3, n_items + 1), 0.5, colors.HexColor("#CCCCCC")),
-        ("FONTNAME", (2, n_rows - 1), (3, n_rows - 1), "Helvetica-Bold"),
+        ("FONTNAME", (2, n_rows - 1), (3, n_rows - 1), BASE_FONT_BOLD),
         ("FONTSIZE", (2, n_rows - 1), (3, n_rows - 1), 10),
         ("LINEABOVE", (2, n_rows - 1), (3, n_rows - 1), 0.5, colors.HexColor("#CCCCCC")),
         ("LINEBELOW", (2, n_rows - 1), (3, n_rows - 1), 0.5, colors.HexColor("#CCCCCC")),
@@ -350,10 +377,10 @@ def build_pdf() -> io.BytesIO:
 
     # ── Footer note (checks payable + thank you) ──
     footer_y = table_top - table_h - 0.4 * inch
-    c.setFont("Helvetica-Bold", 8)
+    c.setFont(BASE_FONT_BOLD, 8)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawCentredString(w / 2, footer_y, PAYABLE_NOTE)
-    c.setFont("Helvetica", 8)
+    c.setFont(BASE_FONT, 8)
     c.setFillColor(colors.black)
     c.drawCentredString(w / 2, footer_y - 0.18 * inch, THANK_YOU)
 
@@ -361,7 +388,7 @@ def build_pdf() -> io.BytesIO:
     pay_y = footer_y - 0.55 * inch
 
     # Section title
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont(BASE_FONT_BOLD, 11)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawString(margin_x, pay_y, "PAYMENT INFORMATION")
     pay_y -= 0.08 * inch
@@ -375,12 +402,12 @@ def build_pdf() -> io.BytesIO:
 
     # Payment rows
     for label, value in PAYMENT_INFO:
-        c.setFont("Helvetica-Bold", 8.5)
+        c.setFont(BASE_FONT_BOLD, 8.5)
         c.setFillColor(colors.HexColor("#2C3E6B"))
         label_str = f"{label}: "
-        label_w = c.stringWidth(label_str, "Helvetica-Bold", 8.5)
+        label_w = c.stringWidth(label_str, BASE_FONT_BOLD, 8.5)
         c.drawString(margin_x, pay_y, label_str)
-        c.setFont("Helvetica", 8.5)
+        c.setFont(BASE_FONT, 8.5)
         c.drawString(margin_x + label_w, pay_y, value)
         pay_y -= 0.23 * inch
 
@@ -389,10 +416,10 @@ def build_pdf() -> io.BytesIO:
     c.setStrokeColor(colors.HexColor("#4A6FA5"))
     c.setLineWidth(1)
     c.line(margin_x, bottom_y + 0.32 * inch, margin_r, bottom_y + 0.32 * inch)
-    c.setFont("Helvetica-Bold", 8)
+    c.setFont(BASE_FONT_BOLD, 8)
     c.setFillColor(colors.HexColor("#4A6FA5"))
     c.drawCentredString(w / 2, bottom_y + 0.15 * inch, COMPANY_NAME)
-    c.setFont("Helvetica", 8)
+    c.setFont(BASE_FONT, 8)
     c.setFillColor(colors.black)
     c.drawCentredString(w / 2, bottom_y, f"{COMPANY_ADDR}  |  {COMPANY_PHONE}")
 
