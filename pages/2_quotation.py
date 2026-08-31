@@ -51,7 +51,7 @@ COMPANY = {
     "name": "MAKK CROSS-BORDER SOLUTIONS LTD.",
     "address": "14278 VALLEY BLVD UNIT A, CITY OF INDUSTRY, CA 91746, UNITED STATES",
     "phone": "626-601-6131",
-    "email": "info@makkcbs.com",  # TODO: confirm real email
+    "email": "mark.chung@bester.com.tw",
     "logo_url": "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/logo.jpg",
 }
 
@@ -232,6 +232,24 @@ def build_pdf() -> io.BytesIO:
     margin_r = w - 0.6 * inch
     y = h - 0.55 * inch
 
+    def wrap_text(text, font, size, max_width):
+        """Word-wrap text to fit max_width, returning a list of lines."""
+        text = safe_str(text).strip()
+        if not text:
+            return []
+        words = text.split()
+        lines, line = [], ""
+        for word in words:
+            test = (line + " " + word).strip()
+            if c.stringWidth(test, font, size) > max_width and line:
+                lines.append(line)
+                line = word
+            else:
+                line = test
+        if line:
+            lines.append(line)
+        return lines
+
     # ── Logo ──
     try:
         resp = requests.get(company["logo_url"], timeout=5)
@@ -246,18 +264,29 @@ def build_pdf() -> io.BytesIO:
     except Exception:
         logo_h = 0.5 * inch
 
-    # ── Company header text (own full-width row, above the quote box) ──
+    # ── Company header text (own full-width row, above the quote box, ECMS-style) ──
     text_x = margin_x + 1.3 * inch
     text_max_w = margin_r - text_x
-    c.setFont(BASE_FONT_BOLD, 12)
-    c.drawString(text_x, y - 0.15 * inch, company["name"])
+
+    c.setFont(BASE_FONT_BOLD, 13)
+    c.setFillColor(colors.HexColor("#1A1A1A"))
+    c.drawString(text_x, y - 0.16 * inch, company["name"])
+
+    line_y = y - 0.35 * inch
     c.setFont(BASE_FONT, 8)
-    c.drawString(text_x, y - 0.32 * inch, company["address"])
-    c.drawString(text_x, y - 0.45 * inch, f"TEL: {company['phone']}    EMAIL: {company['email']}")
+    c.setFillColor(colors.HexColor("#333333"))
+    for addr_line in wrap_text(company["address"], BASE_FONT, 8, text_max_w):
+        c.drawString(text_x, line_y, addr_line)
+        line_y -= 0.14 * inch
+    c.drawString(text_x, line_y, f"TEL: {company['phone']}    EMAIL: {company['email']}")
+    line_y -= 0.14 * inch
+    c.setFillColor(colors.black)
+
+    header_bottom = min(line_y, y - logo_h)
 
     # Move below the letterhead block entirely so nothing can overlap it,
     # regardless of how long the company name or address is.
-    y -= max(logo_h, 0.6 * inch) + 0.2 * inch
+    y = header_bottom - 0.2 * inch
 
     # ── Quotation box (own row, right-aligned, below the letterhead) ──
     box_w, box_h = 2.4 * inch, 0.7 * inch
@@ -280,16 +309,20 @@ def build_pdf() -> io.BytesIO:
     y -= 0.22 * inch
     left_x = margin_x
     right_label_x = w / 2 + 0.1 * inch
+    to_max_w = right_label_x - left_x - 0.4 * inch  # keep clear of the meta column
 
     c.setFont(BASE_FONT_BOLD, 8.5)
     c.drawString(left_x, y, "TO:")
     c.setFont(BASE_FONT, 8.5)
     ty = y - 0.16 * inch
-    if customer_name.strip():
-        c.drawString(left_x + 0.35 * inch, y, customer_name)
-    for line in customer_address.split("\n"):
-        if line.strip():
-            c.drawString(left_x, ty, line.strip())
+    c.setFont(BASE_FONT_BOLD, 8.5)
+    for line in wrap_text(customer_name, BASE_FONT_BOLD, 8.5, to_max_w):
+        c.drawString(left_x, ty, line)
+        ty -= 0.16 * inch
+    c.setFont(BASE_FONT, 8.5)
+    for addr_para in customer_address.split("\n"):
+        for line in wrap_text(addr_para, BASE_FONT, 8.5, to_max_w):
+            c.drawString(left_x, ty, line)
             ty -= 0.16 * inch
 
     meta_rows = [
