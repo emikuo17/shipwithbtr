@@ -264,15 +264,33 @@ def build_pdf() -> io.BytesIO:
     except Exception:
         logo_h = 0.5 * inch
 
-    # ── Company header text (own full-width row, above the quote box, ECMS-style) ──
+    # ── Quotation box (top right, alongside the letterhead) ──
+    box_w, box_h = 2.4 * inch, 0.7 * inch
+    box_x, box_y = margin_r - box_w, y - box_h
+
+    # ── Company header text (left of the box, ECMS-style) ──
     text_x = margin_x + 1.3 * inch
-    text_max_w = margin_r - text_x
+    text_max_w = box_x - text_x - 0.25 * inch  # stop before the box, wrap instead of overlapping
 
-    c.setFont(BASE_FONT_BOLD, 13)
+    # Try to keep the company name on one line by shrinking the font slightly;
+    # only wrap to a second line if it still doesn't fit even at the smallest size.
+    name_font_size = 13
+    for size in (13, 12, 11, 10):
+        if c.stringWidth(company["name"], BASE_FONT_BOLD, size) <= text_max_w:
+            name_font_size = size
+            break
+    else:
+        name_font_size = 10
+
+    c.setFont(BASE_FONT_BOLD, name_font_size)
     c.setFillColor(colors.HexColor("#1A1A1A"))
-    c.drawString(text_x, y - 0.16 * inch, company["name"])
+    name_lines_list = wrap_text(company["name"], BASE_FONT_BOLD, name_font_size, text_max_w) or [company["name"]]
+    line_height = 0.19 * inch if name_font_size >= 12 else 0.16 * inch
+    for i, line in enumerate(name_lines_list):
+        c.drawString(text_x, y - 0.16 * inch - i * line_height, line)
+    name_lines = len(name_lines_list)
 
-    line_y = y - 0.35 * inch
+    line_y = y - 0.16 * inch - name_lines * line_height - 0.05 * inch
     c.setFont(BASE_FONT, 8)
     c.setFillColor(colors.HexColor("#333333"))
     for addr_line in wrap_text(company["address"], BASE_FONT, 8, text_max_w):
@@ -282,15 +300,8 @@ def build_pdf() -> io.BytesIO:
     line_y -= 0.14 * inch
     c.setFillColor(colors.black)
 
-    header_bottom = min(line_y, y - logo_h)
+    header_bottom = min(line_y, y - logo_h, box_y)
 
-    # Move below the letterhead block entirely so nothing can overlap it,
-    # regardless of how long the company name or address is.
-    y = header_bottom - 0.2 * inch
-
-    # ── Quotation box (own row, right-aligned, below the letterhead) ──
-    box_w, box_h = 2.4 * inch, 0.7 * inch
-    box_x, box_y = margin_r - box_w, y - box_h
     c.setStrokeColor(colors.HexColor("#4A6FA5"))
     c.rect(box_x, box_y, box_w, box_h)
     c.setFont(BASE_FONT_BOLD, 15)
@@ -301,7 +312,7 @@ def build_pdf() -> io.BytesIO:
     c.drawCentredString(box_x + box_w / 2, box_y + 0.15 * inch, f"QUOTE NO: {safe_str(quote_no)}")
     c.setStrokeColor(colors.black)
 
-    y = box_y - 0.2 * inch
+    y = header_bottom - 0.2 * inch
     c.setStrokeColor(colors.HexColor("#CCCCCC"))
     c.line(margin_x, y, margin_r, y)
 
