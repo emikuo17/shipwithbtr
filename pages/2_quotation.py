@@ -45,23 +45,14 @@ BASE_FONT = FONT_NAME if _font_ok else "Helvetica"
 BASE_FONT_BOLD = FONT_NAME_BOLD if _font_ok else "Helvetica-Bold"
 
 # ----------------------------
-# Company config (MAKK / BTR switch)
+# Company config (MAKK only)
 # ----------------------------
-COMPANIES = {
-    "MAKK": {
-        "name": "MAKK CROSS-BORDER SOLUTIONS LTD.",
-        "address": "14278 VALLEY BLVD UNIT A, CITY OF INDUSTRY, CA 91746, UNITED STATES",
-        "phone": "626-601-6131",
-        "email": "info@makkcbs.com",  # TODO: confirm real email
-        "logo_url": "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/logo.jpg",
-    },
-    "BTR": {
-        "name": "BEST TRANSPORTATION RESOLUTION",
-        "address": "14278 VALLEY BLVD UNIT A, CITY OF INDUSTRY, CA 91746, UNITED STATES",
-        "phone": "626-601-6131",
-        "email": "info@shipwithbtr.com",  # TODO: confirm real email
-        "logo_url": "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/btr_logo.jpg",  # TODO: confirm real filename
-    },
+COMPANY = {
+    "name": "MAKK CROSS-BORDER SOLUTIONS LTD.",
+    "address": "14278 VALLEY BLVD UNIT A, CITY OF INDUSTRY, CA 91746, UNITED STATES",
+    "phone": "626-601-6131",
+    "email": "info@makkcbs.com",  # TODO: confirm real email
+    "logo_url": "https://raw.githubusercontent.com/emikuo17/shipwithbtr/main/logo.jpg",
 }
 
 # ----------------------------
@@ -118,11 +109,7 @@ if "selected_customer" not in st.session_state:
 # ----------------------------
 st.title("Quotation Generator")
 
-st.subheader("Company")
-company_choice = st.radio("Quoting as", options=list(COMPANIES.keys()), horizontal=True)
-company = COMPANIES[company_choice]
-
-st.divider()
+company = COMPANY
 
 st.subheader("Customer")
 selected = st.selectbox(
@@ -139,18 +126,14 @@ customer_address = st.text_area("Customer address", value=cust["address"], heigh
 st.divider()
 
 st.subheader("Quote Info")
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
     quote_no = st.text_input("Quote No.", value="")
     create_date = st.date_input("Create Date", value=date.today())
-    created_by = st.text_input("Created By", value="")
+    created_by = st.text_input("Created By", value="Mark Chung")
 with col2:
-    sales_person = st.text_input("Sales Person", value="")
-    operation = st.text_input("Operation", value="")
     ship_mode = st.selectbox("Ship Mode", ["AIR", "SEA", "TRUCK"], index=0)
-with col3:
     service_term = st.text_input("Service Term", value="AIRPORT/AIRPORT")
-    incoterms = st.text_input("Incoterms", value="")
     valid_from = st.date_input("Valid From", value=date.today())
     valid_to = st.date_input("Valid To", value=date.today() + timedelta(days=7))
 
@@ -177,12 +160,7 @@ with col1:
     destination = st.text_input("Destination", value="")
 with col2:
     final_destination = st.text_input("Final Destination", value="")
-    via = st.text_input("Via", value="")
-col1, col2 = st.columns(2)
-with col1:
     carrier = st.text_input("Carrier", value="")
-with col2:
-    transit_time = st.text_input("T/T", value="")
 
 st.divider()
 
@@ -268,28 +246,33 @@ def build_pdf() -> io.BytesIO:
     except Exception:
         logo_h = 0.5 * inch
 
-    # ── Company header text ──
+    # ── Company header text (own full-width row, above the quote box) ──
     text_x = margin_x + 1.3 * inch
-    c.setFont(BASE_FONT_BOLD, 13)
+    text_max_w = margin_r - text_x
+    c.setFont(BASE_FONT_BOLD, 12)
     c.drawString(text_x, y - 0.15 * inch, company["name"])
     c.setFont(BASE_FONT, 8)
-    c.drawString(text_x, y - 0.33 * inch, company["address"])
-    c.drawString(text_x, y - 0.46 * inch, f"TEL: {company['phone']}    EMAIL: {company['email']}")
+    c.drawString(text_x, y - 0.32 * inch, company["address"])
+    c.drawString(text_x, y - 0.45 * inch, f"TEL: {company['phone']}    EMAIL: {company['email']}")
 
-    # ── Quotation box (top right) ──
-    box_w, box_h = 2.6 * inch, 0.9 * inch
-    box_x, box_y = margin_r - box_w, y - box_h + 0.05 * inch
+    # Move below the letterhead block entirely so nothing can overlap it,
+    # regardless of how long the company name or address is.
+    y -= max(logo_h, 0.6 * inch) + 0.2 * inch
+
+    # ── Quotation box (own row, right-aligned, below the letterhead) ──
+    box_w, box_h = 2.4 * inch, 0.7 * inch
+    box_x, box_y = margin_r - box_w, y - box_h
     c.setStrokeColor(colors.HexColor("#4A6FA5"))
     c.rect(box_x, box_y, box_w, box_h)
-    c.setFont(BASE_FONT_BOLD, 16)
+    c.setFont(BASE_FONT_BOLD, 15)
     c.setFillColor(colors.HexColor("#4A6FA5"))
-    c.drawCentredString(box_x + box_w / 2, box_y + box_h - 0.35 * inch, "QUOTATION")
+    c.drawCentredString(box_x + box_w / 2, box_y + box_h - 0.3 * inch, "QUOTATION")
     c.setFont(BASE_FONT, 9)
     c.setFillColor(colors.black)
     c.drawCentredString(box_x + box_w / 2, box_y + 0.15 * inch, f"QUOTE NO: {safe_str(quote_no)}")
     c.setStrokeColor(colors.black)
 
-    y -= 0.85 * inch
+    y = box_y - 0.2 * inch
     c.setStrokeColor(colors.HexColor("#CCCCCC"))
     c.line(margin_x, y, margin_r, y)
 
@@ -312,11 +295,8 @@ def build_pdf() -> io.BytesIO:
     meta_rows = [
         ("CREATE DATE", create_date.strftime("%m-%d-%Y")),
         ("CREATED BY", created_by),
-        ("SALES PERSON", sales_person),
-        ("OPERATION", operation),
         ("SHIP MODE", ship_mode),
         ("SERVICE TERM", service_term),
-        ("INCOTERMS", incoterms),
         ("VALID DATE", f"{valid_from.strftime('%m-%d-%Y')} ~ {valid_to.strftime('%m-%d-%Y')}"),
     ]
     my = y
@@ -367,23 +347,13 @@ def build_pdf() -> io.BytesIO:
         ("Departure", departure, left_x),
         ("Destination", destination, left_x + 2.0 * inch),
         ("Final Destination", final_destination, left_x + 4.0 * inch),
-        ("Via", via, left_x + 5.5 * inch),
+        ("Carrier", carrier, left_x + 5.7 * inch),
     ]
     for label, val, xpos in route_cols:
         c.setFont(BASE_FONT_BOLD, 7.5)
         c.drawString(xpos, y, label)
         c.setFont(BASE_FONT, 8.5)
         c.drawString(xpos, y - 0.15 * inch, safe_str(val))
-
-    y -= 0.35 * inch
-    c.setFont(BASE_FONT_BOLD, 7.5)
-    c.drawString(left_x, y, "Carrier")
-    c.setFont(BASE_FONT, 8.5)
-    c.drawString(left_x, y - 0.15 * inch, safe_str(carrier))
-    c.setFont(BASE_FONT_BOLD, 7.5)
-    c.drawString(left_x + 2.0 * inch, y, "T/T")
-    c.setFont(BASE_FONT, 8.5)
-    c.drawString(left_x + 2.0 * inch, y - 0.15 * inch, safe_str(transit_time))
 
     y -= 0.35 * inch
 
