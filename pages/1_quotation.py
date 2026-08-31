@@ -106,8 +106,8 @@ def safe_str(v) -> str:
 # ----------------------------
 # Init session state
 # ----------------------------
-if "items_df" not in st.session_state:
-    st.session_state.items_df = pd.DataFrame(
+if "quotation_items_df" not in st.session_state:
+    st.session_state.quotation_items_df = pd.DataFrame(
         [{"Description": "", "Remark": "", "Unit": "", "Qty": 1.0, "Rate": 0.0, "Currency": "USD"}]
     )
 if "selected_customer" not in st.session_state:
@@ -191,23 +191,23 @@ st.subheader("Rate Line Items")
 btn_col1, btn_col2, _ = st.columns([1, 1, 3])
 with btn_col1:
     if st.button("➕ Add line item"):
-        base = st.session_state.items_df.copy()
-        editor_state = st.session_state.get("items_editor", {})
+        base = st.session_state.quotation_items_df.copy()
+        editor_state = st.session_state.get("quotation_items_editor", {})
         for idx, changes in editor_state.get("edited_rows", {}).items():
             for col, val in changes.items():
                 base.at[idx, col] = val
-        st.session_state.items_df = pd.concat(
+        st.session_state.quotation_items_df = pd.concat(
             [base, pd.DataFrame([{"Description": "", "Remark": "", "Unit": "", "Qty": 1.0, "Rate": 0.0, "Currency": "USD"}])],
             ignore_index=True
         )
 
 with btn_col2:
     if st.button("🗑️ Remove last item"):
-        if len(st.session_state.items_df) > 1:
-            st.session_state.items_df = st.session_state.items_df.iloc[:-1].reset_index(drop=True)
+        if len(st.session_state.quotation_items_df) > 1:
+            st.session_state.quotation_items_df = st.session_state.quotation_items_df.iloc[:-1].reset_index(drop=True)
 
 edited_df = st.data_editor(
-    st.session_state.items_df,
+    st.session_state.quotation_items_df,
     use_container_width=True,
     num_rows="fixed",
     column_config={
@@ -219,7 +219,7 @@ edited_df = st.data_editor(
         "Currency": st.column_config.TextColumn("Cur.", width="small"),
     },
     hide_index=True,
-    key="items_editor",
+    key="quotation_items_editor",
 )
 
 items_df = edited_df.copy()
