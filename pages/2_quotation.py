@@ -1,9 +1,12 @@
 import io
+import json
 import requests
 from datetime import date, timedelta
 
 import streamlit as st
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 from PIL import Image as PILImage
 
 from reportlab.lib.pagesizes import LETTER
@@ -56,26 +59,49 @@ COMPANY = {
 }
 
 # ----------------------------
-# Customer directory (reused from invoice tool)
+# Google Sheets customer database (shared with the invoice app)
 # ----------------------------
-CUSTOMERS = {
-    "-- Select a customer --": {"address": ""},
-    "Falcon Logistics Global Inc.": {
-        "address": "667 BREA CANYON RD., STE 20B WALNUT, CA 91789",
-    },
-    "Shenzhen Baixin International Logistics Co., Ltd. Huangshan Branch": {
-        "address": "",
-    },
-    "Richard Hercoson (Paradigm01)": {
-        "address": "",
-    },
-    "DalnoMo LLC": {
-        "address": "",
-    },
-    "Advantage Transport Solution Inc.": {
-        "address": "",
-    },
-}
+@st.cache_resource(show_spinner=False)
+def get_sheet():
+    """Connect once per session to the shared customer database Google Sheet."""
+    creds_dict = json.loads(st.secrets["gcp_service_account_json"])
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_key(st.secrets["sheet_id"])
+    return sh.sheet1
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_customers():
+    """Pull all customer rows from the Sheet, refreshed at most every 5 minutes."""
+    default = {
+        "-- Select a customer --": {"customer_id": "", "receiver": "", "phone": "", "address": ""}
+    }
+    try:
+        records = get_sheet().get_all_records()
+    except Exception as e:
+        st.warning(f"Could not load customers from Google Sheets, using blank list: {e}")
+        return default
+
+    customers = dict(default)
+    for row in records:
+        cust_id = safe_str(row.get("Customer ID")).strip()
+        company = safe_str(row.get("Company Name")).strip()
+        if not cust_id and not company:
+            continue
+        label = f"{cust_id} — {company}" if cust_id and company else (cust_id or company)
+        customers[label] = {
+            "customer_id": cust_id,
+            "receiver": safe_str(row.get("Receiver")).strip(),
+            "phone": safe_str(row.get("Phone")).strip(),
+            "address": safe_str(row.get("Address")).strip(),
+        }
+    return customers
+
+def add_customer(cust_id, company, receiver, phone, address):
+    """Append a new customer row to the Sheet, then clear the cache so it shows up immediately."""
+    get_sheet().append_row([cust_id, company, receiver, phone, address])
+    load_customers.clear()
 
 # ----------------------------
 # Helpers
@@ -111,6 +137,8 @@ st.title("Quotation Generator")
 
 company = COMPANY
 
+CUSTOMERS = load_customers()
+
 st.subheader("Customer")
 customer_keys = list(CUSTOMERS.keys())
 selected = st.selectbox(
@@ -122,8 +150,25 @@ selected = st.selectbox(
 )
 st.session_state.quotation_selected_customer = selected
 cust = CUSTOMERS[selected]
-customer_name = st.text_input("To (Customer name)", value="" if selected.startswith("--") else selected)
+default_name = cust["receiver"] or ("" if selected.startswith("--") else selected)
+customer_name = st.text_input("To (Customer name)", value=default_name)
 customer_address = st.text_area("Customer address", value=cust["address"], height=70)
+
+with st.expander("➕ Add a new customer to the database"):
+    with st.form("quotation_new_customer_form", clear_on_submit=True):
+        nc_id = st.text_input("Customer ID")
+        nc_company = st.text_input("Company Name")
+        nc_receiver = st.text_input("Receiver (name printed on documents)")
+        nc_phone = st.text_input("Phone")
+        nc_address = st.text_area("Address", height=70)
+        submitted = st.form_submit_button("Save customer")
+        if submitted:
+            if not nc_id and not nc_company:
+                st.error("Enter at least a Customer ID or Company Name.")
+            else:
+                add_customer(nc_id, nc_company, nc_receiver, nc_phone, nc_address)
+                st.success(f"Saved {nc_company or nc_id} — it'll appear in the dropdown above now.")
+                st.rerun()
 
 st.divider()
 
