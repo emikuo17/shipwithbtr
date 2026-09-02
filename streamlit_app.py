@@ -1,9 +1,12 @@
 import io
+import json
 import requests
 from datetime import date
 
 import streamlit as st
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 from PIL import Image as PILImage
 
 from reportlab.lib.pagesizes import LETTER
@@ -70,43 +73,51 @@ PAYMENT_INFO = [
 ]
 
 # ----------------------------
-# Customer directory
+# Google Sheets customer database
 # ----------------------------
-CUSTOMERS = {
-    "-- Select a customer --": {
-        "customer_id": "", "receiver": "", "phone": "", "address": ""
-    },
-    "Falcon01 — Falcon Logistics Global Inc.": {
-        "customer_id": "Falcon01",
-        "receiver": "FALCON LOGISTICS GLOBAL INC.",
-        "phone": "",
-        "address": "667 BREA CANYON RD., STE 20B WALNUT, CA 91789",
-    },
-    "Baixin 01 — Shenzhen Baixin International Logistics": {
-        "customer_id": "Baixin 01",
-        "receiver": "Shenzhen Baixin International Logistics Co., Ltd. Huangshan Branch",
-        "phone": "",
-        "address": "",
-    },
-    "Paradigm01 — Richard Hercoson": {
-        "customer_id": "Paradigm01",
-        "receiver": "Richard Hercoson",
-        "phone": "",
-        "address": "",
-    },
-    "DalnoMo LLC": {
-        "customer_id": "DalnoMo LLC",
-        "receiver": "DalnoMo LLC",
-        "phone": "",
-        "address": "",
-    },
-    "Advantage Transport Solution Inc.": {
-        "customer_id": "Advantage transport solution inc",
-        "receiver": "Advantage transport solution inc",
-        "phone": "",
-        "address": "",
-    },
-}
+SHEET_COLUMNS = ["Customer ID", "Company Name", "Receiver", "Phone", "Address"]
+
+@st.cache_resource(show_spinner=False)
+def get_sheet():
+    """Connect once per session to the customer database Google Sheet."""
+    creds_dict = json.loads(st.secrets["gcp_service_account_json"])
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_key(st.secrets["sheet_id"])
+    return sh.sheet1
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_customers():
+    """Pull all customer rows from the Sheet, refreshed at most every 5 minutes."""
+    default = {
+        "-- Select a customer --": {"customer_id": "", "receiver": "", "phone": "", "address": ""}
+    }
+    try:
+        records = get_sheet().get_all_records()
+    except Exception as e:
+        st.warning(f"Could not load customers from Google Sheets, using blank list: {e}")
+        return default
+
+    customers = dict(default)
+    for row in records:
+        cust_id = safe_str(row.get("Customer ID")).strip()
+        company = safe_str(row.get("Company Name")).strip()
+        if not cust_id and not company:
+            continue
+        label = f"{cust_id} — {company}" if cust_id and company else (cust_id or company)
+        customers[label] = {
+            "customer_id": cust_id,
+            "receiver": safe_str(row.get("Receiver")).strip(),
+            "phone": safe_str(row.get("Phone")).strip(),
+            "address": safe_str(row.get("Address")).strip(),
+        }
+    return customers
+
+def add_customer(cust_id, company, receiver, phone, address):
+    """Append a new customer row to the Sheet, then clear the cache so it shows up immediately."""
+    get_sheet().append_row([cust_id, company, receiver, phone, address])
+    load_customers.clear()
 
 # ----------------------------
 # Helpers
@@ -140,15 +151,34 @@ if "selected_customer" not in st.session_state:
 # ----------------------------
 st.title("MAKK Invoice Generator")
 
+CUSTOMERS = load_customers()
+
 st.subheader("Customer")
 selected = st.selectbox(
     "Select existing customer (or fill manually below)",
     options=list(CUSTOMERS.keys()),
-    index=list(CUSTOMERS.keys()).index(st.session_state.selected_customer),
+    index=list(CUSTOMERS.keys()).index(st.session_state.selected_customer)
+    if st.session_state.selected_customer in CUSTOMERS else 0,
     key="customer_dropdown",
 )
 st.session_state.selected_customer = selected
 cust = CUSTOMERS[selected]
+
+with st.expander("➕ Add a new customer to the database"):
+    with st.form("new_customer_form", clear_on_submit=True):
+        nc_id = st.text_input("Customer ID")
+        nc_company = st.text_input("Company Name")
+        nc_receiver = st.text_input("Receiver (name printed on invoice)")
+        nc_phone = st.text_input("Phone")
+        nc_address = st.text_area("Address", height=70)
+        submitted = st.form_submit_button("Save customer")
+        if submitted:
+            if not nc_id and not nc_company:
+                st.error("Enter at least a Customer ID or Company Name.")
+            else:
+                add_customer(nc_id, nc_company, nc_receiver, nc_phone, nc_address)
+                st.success(f"Saved {nc_company or nc_id} — it'll appear in the dropdown above now.")
+                st.rerun()
 
 st.divider()
 
