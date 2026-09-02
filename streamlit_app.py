@@ -87,7 +87,7 @@ def get_sheet():
     sh = gc.open_by_key(st.secrets["sheet_id"])
     return sh.sheet1
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=0, show_spinner=False)
 def load_customers():
     """Pull all customer rows from the Sheet, refreshed at most every 5 minutes."""
     default = {
