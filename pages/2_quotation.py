@@ -101,8 +101,8 @@ if "quotation_items_df" not in st.session_state:
     st.session_state.quotation_items_df = pd.DataFrame(
         [{"Description": "", "Remark": "", "Unit": "", "Qty": 1.0, "Rate": 0.0, "Currency": "USD"}]
     )
-if "selected_customer" not in st.session_state:
-    st.session_state.selected_customer = "-- Select a customer --"
+if "quotation_selected_customer" not in st.session_state:
+    st.session_state.quotation_selected_customer = "-- Select a customer --"
 
 # ----------------------------
 # UI
@@ -112,13 +112,15 @@ st.title("Quotation Generator")
 company = COMPANY
 
 st.subheader("Customer")
+customer_keys = list(CUSTOMERS.keys())
 selected = st.selectbox(
     "Select existing customer (or fill manually below)",
-    options=list(CUSTOMERS.keys()),
-    index=list(CUSTOMERS.keys()).index(st.session_state.selected_customer),
+    options=customer_keys,
+    index=customer_keys.index(st.session_state.quotation_selected_customer)
+    if st.session_state.quotation_selected_customer in customer_keys else 0,
     key="customer_dropdown",
 )
-st.session_state.selected_customer = selected
+st.session_state.quotation_selected_customer = selected
 cust = CUSTOMERS[selected]
 customer_name = st.text_input("To (Customer name)", value="" if selected.startswith("--") else selected)
 customer_address = st.text_area("Customer address", value=cust["address"], height=70)
